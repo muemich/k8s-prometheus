@@ -1,0 +1,78 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    name: alertmanager-deployment
+  name: alertmanager
+  namespace: monitoring
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+      - image: quay.io/prometheus/alertmanager:v0.6.2
+        name: alertmanager
+        command:
+        - "/bin/alertmanager"
+        args:
+        - -config.file=/etc/prometheus/alertmanager.yml
+        - "-storage.path=/alertmanager"
+        ports:
+        - containerPort: 9093
+          protocol: TCP
+        volumeMounts:
+        - mountPath: "/alertmanager"
+          name: data
+        - mountPath: /etc/prometheus
+          name: config-volume-alertmanager
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 2500Mi
+      volumes:
+      - emptyDir: {}
+        name: data
+      - configMap:
+          name: prometheus-alertmanager
+        name: config-volume-alertmanager
+      - configMap:
+          name: prometheus-alert-rules
+        name: config-volume-alert-rules
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  labels:
+    name: alertmanager
+spec:
+  type: NodePort
+  ports:
+  - port: 9093
+    targetPort: 9093
+  selector:
+    app: alertmanager
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+data:
+  simple.yml: |
+    global:
+      slack_api_url: '<slack_webhook_url>'
+    route:
+      receiver: 'slack-notifications'
+      # All alerts in a notification have the same value for these labels.
+      group_by: [alertname, datacenter, app]
+    receivers:
+      - name: 'slack-notifications'
+        slack_configs:
+        - channel: '#alerts'
